@@ -52,26 +52,20 @@ function createZeroPoint(color) {
 }
 
 // --- Функция для создания линии оси ---
-function createAxisLine(start, end, color) {
+function createAxisLine(start, end, color, isLeftGrid) {
   const material = new THREE.LineBasicMaterial({ color: color, depthTest: false });
   const points = [start, end];
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
   const line = new THREE.Line(geometry, material);
-  return line;
-}
 
-// --- Функция для создания столбца ---
-function createColumn(x, y, z, color, isLeftGrid) {
-  const geometry = new THREE.BoxGeometry(cellSize, cellSize, z * cellSize);
-  const material = new THREE.MeshBasicMaterial({ color: color });
-  const column = new THREE.Mesh(geometry, material);
-  // Позиционируем столбец относительно родительской группы
+  // Инвертируем координаты X для линии оси X левой сетки
   if (isLeftGrid) {
-    column.position.set(x + leftSequencerGroup.position.x, y + leftSequencerGroup.position.y, z / 2 + leftSequencerGroup.position.z);
-  } else {
-    column.position.set(x + rightSequencerGroup.position.x, y + rightSequencerGroup.position.y, z / 2 + rightSequencerGroup.position.z);
+    line.geometry.attributes.position.array[0] *= -1;
+    line.geometry.attributes.position.array[3] *= -1;
+    line.geometry.attributes.position.needsUpdate = true;
   }
-  return column;
+
+  return line;
 }
 
 // --- Функция для создания сетки ---
@@ -108,58 +102,87 @@ function createGrid(gridWidth, gridHeight, gridDepth, cellSize, color) {
 function createAxis(length, sphereRadius, xColor, yColor, zColor, isLeftGrid) {
   const axisGroup = new THREE.Group();
 
+  let xAxisOffset = isLeftGrid ? gridWidth : 0;
+
+  // --- Группа для оси X ---
+  const xAxisGroup = new THREE.Group();
+  axisGroup.add(xAxisGroup);
+
   const xAxis = createSphere(xColor, sphereRadius);
   xAxis.position.set(length, 0, 0);
-  axisGroup.add(xAxis);
+
+  if (isLeftGrid) {
+    xAxis.position.x *= -1; // Отражаем позицию синей точки для левой сетки
+  }
+
+  xAxisGroup.add(xAxis);
+
+  const xAxisLine = createAxisLine(new THREE.Vector3(0, 0, 0), new THREE.Vector3(length, 0, 0), xColor, isLeftGrid);
+  xAxisGroup.add(xAxisLine);
+
+  xAxisGroup.position.set(xAxisOffset, 0, 0);
+
+  // --- Группа для оси Y ---
+  const yAxisGroup = new THREE.Group();
+  axisGroup.add(yAxisGroup);
 
   const yAxis = createSphere(yColor, sphereRadius);
   yAxis.position.set(0, length, 0); 
-  axisGroup.add(yAxis);
+  yAxisGroup.add(yAxis);
+
+  const yAxisLine = createAxisLine(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, length, 0), yColor, isLeftGrid);
+  yAxisGroup.add(yAxisLine);
+
+  yAxisGroup.position.set(xAxisOffset, 0, 0);
+
+  // --- Группа для оси Z ---
+  const zAxisGroup = new THREE.Group();
+  axisGroup.add(zAxisGroup);
 
   const zAxis = createSphere(zColor, sphereRadius);
   zAxis.position.set(0, 0, length);
-  axisGroup.add(zAxis);
+  zAxisGroup.add(zAxis);
 
+  const zAxisLine = createAxisLine(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, length), zColor, isLeftGrid);
+  zAxisGroup.add(zAxisLine);
+
+  zAxisGroup.position.set(xAxisOffset, 0, 0);
+
+  // Нулевая точка
   const zeroPoint = createZeroPoint(purpleMaterial);
-  zeroPoint.position.set(0, 0, 0);
-  axisGroup.add(zeroPoint);
-
-  const xAxisLine = createAxisLine(zeroPoint.position, xAxis.position, xColor);
-  axisGroup.add(xAxisLine);
-
-  const yAxisLine = createAxisLine(zeroPoint.position, yAxis.position, yColor);
-  axisGroup.add(yAxisLine);
-
-  const zAxisLine = createAxisLine(zeroPoint.position, zAxis.position, zColor);
-  axisGroup.add(zAxisLine);
-
-  // Отражаем позицию точки X для левой сетки
-  if (isLeftGrid) {
-    xAxis.position.x *= -1;
-  }
+  zeroPoint.position.set(xAxisOffset, 0, 0); 
+  axisGroup.add(zeroPoint); 
 
   return axisGroup;
 }
+
 // --- Создание сеток ---
 var grid1 = createGrid(gridWidth, gridHeight, gridDepth, cellSize, 0xffffff);
 var grid2 = createGrid(gridWidth, gridHeight, gridDepth, cellSize, 0xffffff);
 
 // --- Создаем общий родительский объект для сеток ---
 const sequencerGroup = new THREE.Group();
-scene.add(sequencerGroup);
 
 // --- Создаем родительский объект для левой сетки ---
 const leftSequencerGroup = new THREE.Group();
-sequencerGroup.add(leftSequencerGroup); // Добавляем в общий родительский объект
 
 // --- Создаем родительский объект для правой сетки ---
 const rightSequencerGroup = new THREE.Group();
+
+// --- Вычисляем координаты центральной точки между фиолетовыми точками ---
+const centerX = (leftSequencerGroup.position.x + rightSequencerGroup.position.x) / 2;
+
+// --- Устанавливаем центр вращения ---
+sequencerGroup.position.set(centerX, 0, 0);
+
+scene.add(sequencerGroup);
+
+sequencerGroup.add(leftSequencerGroup); // Добавляем в общий родительский объект
 sequencerGroup.add(rightSequencerGroup); // Добавляем в общий родительский объект
 
 // --- Создание осей с шариками ---
 var axisLength = 130; // Длина каждой оси 130 ячеек
 var sphereRadius = 5; // Радиус шариков
-
 // --- Создаем оси ---
 const leftAxis = createAxis(axisLength, sphereRadius, blueMaterial, greenMaterial, 0xffffff, true);
 leftSequencerGroup.add(leftAxis);
@@ -171,15 +194,11 @@ rightSequencerGroup.add(rightAxis);
 leftSequencerGroup.add(grid1);
 rightSequencerGroup.add(grid2);
 
-// --- Отражаем левую сетку ---
-leftSequencerGroup.scale.set(-1, 1, 1);
+// ---  Позиционируем левую сетку ---
 leftSequencerGroup.position.set(-gridWidth / 2 - gap / 2, -gridHeight / 2, -gridDepth / 2);
 
-// --- Центрируем правую сетку ---
+// ---  Позиционируем правую сетку ---
 rightSequencerGroup.position.set(gridWidth / 2 + gap / 2, -gridHeight / 2, -gridDepth / 2);
-
-// --- Центрируем секвенсор для вращения ---
-sequencerGroup.position.set(0, 0, 0); // Центрируем группу секвенсора
 
 // --- Переменные для хранения координат выбранной ячейки ---
 let selectedX = 0;
@@ -201,15 +220,10 @@ loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json
     });
     var mesh = new THREE.Mesh(geometry, labelMaterial);
     mesh.position.copy(position);
-
-    // Зеркально отражаем позицию текста для левой сетки
-    if (isLeftGrid) {
-      mesh.position.x *= -1;
-      geometry.computeBoundingBox();
-      var labelWidth = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
-      mesh.position.x -= labelWidth; // Корректируем позицию после отражения
-    }
     mesh.rotation.y = rotation;
+    geometry.computeBoundingBox();
+    var labelWidth = geometry.boundingBox.max.x - geometry.boundingBox.min.x;
+    mesh.position.x -= labelWidth / 2;
 
     // Добавляем метку в соответствующую группу
     if (isLeftGrid) {
@@ -222,8 +236,8 @@ loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json
   }
 
   // --- Создание меток для осей ---
-  createLabel('-180°', cellSize * 16, new THREE.Vector3(leftAxis.children[0].position.x - cellSize * 15, leftAxis.children[0].position.y, leftAxis.children[0].position.z), 0, labelMaterial, true);
-  createLabel('+180°', cellSize * 16, new THREE.Vector3(rightAxis.children[0].position.x + cellSize * 15, rightAxis.children[0].position.y, rightAxis.children[0].position.z), 0, labelMaterial, false);
+  createLabel('-180°', cellSize * 16, new THREE.Vector3(leftAxis.children[0].position.x, leftAxis.children[0].position.y, leftAxis.children[0].position.z), 0, labelMaterial, true);
+  createLabel('+180°', cellSize * 16, new THREE.Vector3(rightAxis.children[0].position.x, rightAxis.children[0].position.y, rightAxis.children[0].position.z), 0, labelMaterial, false);
 
   createLabel(semitones[0].f.toFixed(2), cellSize * 8, new THREE.Vector3(leftAxis.children[2].position.x, leftAxis.children[2].position.y, leftAxis.children[2].position.z + cellSize * 10), 0, labelMaterial, true);
   createLabel(semitones[semitones.length - 1].f.toFixed(2), cellSize * 8, new THREE.Vector3(rightAxis.children[2].position.x, rightAxis.children[2].position.y, rightAxis.children[2].position.z + cellSize * 10), 0, labelMaterial, false);
@@ -243,32 +257,37 @@ loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
 
-    const intersects = raycaster.intersectObjects([leftAxis.children[0], leftAxis.children[1], leftAxis.children[2], rightAxis.children[0], rightAxis.children[1], rightAxis.children[2]]);
+    const intersects = raycaster.intersectObjects([leftAxis.children[0].children[0], leftAxis.children[1].children[0], leftAxis.children[2].children[0], rightAxis.children[0].children[0], rightAxis.children[1].children[0], rightAxis.children[2].children[0]]);
 
     if (intersects.length > 0) {
       const selectedSphere = intersects[0].object;
 
-      if (selectedSphere === leftAxis.children[0]) {
+      let isLeftGrid = false;
+
+      if (selectedSphere === leftAxis.children[0].children[0]) {
         selectedX = -axisLength;
         selectedY = 0;
         selectedZ = 0;
-      } else if (selectedSphere === leftAxis.children[1]) {
+        isLeftGrid = true;
+      } else if (selectedSphere === leftAxis.children[1].children[0]) {
         selectedX = 0;
         selectedY = axisLength;
         selectedZ = 0;
-      } else if (selectedSphere === leftAxis.children[2]) {
+        isLeftGrid = true;
+      } else if (selectedSphere === leftAxis.children[2].children[0]) {
         selectedX = 0;
         selectedY = 0;
         selectedZ = axisLength;
-      } else if (selectedSphere === rightAxis.children[0]) {
+        isLeftGrid = true;
+      } else if (selectedSphere === rightAxis.children[0].children[0]) {
         selectedX = axisLength;
         selectedY = 0;
         selectedZ = 0;
-      } else if (selectedSphere === rightAxis.children[1]) {
+      } else if (selectedSphere === rightAxis.children[1].children[0]) {
         selectedX = 0;
         selectedY = axisLength;
         selectedZ = 0;
-      } else if (selectedSphere === rightAxis.children[2]) {
+      } else if (selectedSphere === rightAxis.children[2].children[0]) {
         selectedX = 0;
         selectedY = 0;
         selectedZ = axisLength;
@@ -283,10 +302,10 @@ loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json
         }
       }
       // --- Создаем новый столбец ---
-      currentColumn = createColumn(selectedX, selectedY, selectedZ, greenMaterial, selectedSphere === leftAxis.children[0] || selectedSphere === leftAxis.children[1] || selectedSphere === leftAxis.children[2]);
+      currentColumn = createColumn(selectedX, selectedY, selectedZ, greenMaterial, isLeftGrid);
 
       // --- Добавляем столбец в соответствующую группу ---
-      if (selectedSphere === leftAxis.children[0] || selectedSphere === leftAxis.children[1] || selectedSphere === leftAxis.children[2]) {
+      if (isLeftGrid) {
         leftSequencerGroup.add(currentColumn);
       } else {
         rightSequencerGroup.add(currentColumn);
@@ -349,15 +368,11 @@ renderer.domElement.addEventListener('touchmove', function (event) {
     var distance = Math.sqrt(dx * dx + dy * dy);
     var delta = distance - previousDistance;
 
-    scaleFactor += delta * 0.01;
-    scaleFactor = Math.max(0.25, Math.min(scaleFactor, 1));
+    scaleFactor += delta * 0.005; 
+    scaleFactor = Math.max(0.25, Math.min(scaleFactor, 2));
 
     // Масштабируем общий родительский объект
-    if (event.touches[0].pageX > window.innerWidth / 2 && event.touches[1].pageX > window.innerWidth / 2) {
-      sequencerGroup.scale.set(scaleFactor, scaleFactor, scaleFactor);
-    } else if (event.touches[0].pageX < window.innerWidth / 2 && event.touches[1].pageX < window.innerWidth / 2) {
-      sequencerGroup.scale.set(scaleFactor, scaleFactor, scaleFactor);
-    }
+    sequencerGroup.scale.set(scaleFactor, scaleFactor, scaleFactor);
 
     previousDistance = distance;
   }
@@ -371,27 +386,6 @@ renderer.domElement.addEventListener('touchend', function (event) {
 });
 
 // --- Удаляем разделительную линию ---
-
-// Цикл рендеринга
-function animate() {
-  requestAnimationFrame(animate);
-  renderer.render(scene, camera);
-}
-animate();
-
-// --- Обработчик изменения размера окна ---
-window.addEventListener('resize', function () {
-  camera.left = -window.innerWidth / 2;
-  camera.right = window.innerWidth / 2;
-  camera.top = window.innerHeight / 2;
-  camera.bottom = -window.innerHeight / 2;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-
-  // Центрируем секвенсор
-  sequencerGroup.position.set(0, -gridHeight / 2, -gridDepth / 2);
-});
-
 
 // --- Функция DWT (дискретное вейвлет-преобразование) ---
 function DWT(data) {
@@ -491,7 +485,7 @@ startButton.addEventListener('click', function () {
       })
       .catch(err => {
         console.error("Error accessing microphone:", err);
-        startButton.textContent = "Start"; // Возвращаем текст кнопки на "Start"
+        startButton.textContent = "Start"; // Возвращаем текст кнопки на "Start”
         isRecording = false;
       });
   } else {
@@ -506,3 +500,159 @@ startButton.addEventListener('click', function () {
     }
   }
 });
+// --- Функция для создания линии ---
+function createLine(x1, y1, z1, x2, y2, z2, color, opacity, isLeftGrid, width, offset) { 
+  // Проверка границ индекса
+  if (y1 < 1 || y1 > semitones.length || y2 < 1 || y2 > semitones.length) {
+    return new THREE.Line(); // Возвращаем пустую линию, если индекс выходит за границы
+  }
+
+  if (isLeftGrid) {
+    // Отсчитываем координаты X от правой грани (gridWidth) и двигаемся влево
+    x1 = gridWidth - x1;
+    x2 = gridWidth - x2;
+
+    // Проверка, чтобы левая граница столбца не выходила за пределы сетки
+    if (x1 < 0) {
+      x1 = 0;
+    }
+    if (x2 < 0) {
+      x2 = 0;
+    }
+
+    // Проверка смещения влево и закрашивание синим
+    if (offset > 0 && x1 < gridWidth - degreesToCells(semitones[y1 - 1].deg) && x1 >= gridWidth - degreesToCells(semitones[y1 - 1].deg) - offset) {
+      color = blueMaterial;
+    } else if (x1 >= gridWidth - degreesToCells(semitones[y1 - 1].deg)) { // Внутри зеленой призмы
+      color = greenMaterial;
+    }
+  } else {
+    // Проверка смещения вправо и закрашивание красным
+    if (offset > 0 && x2 > degreesToCells(semitones[y2 - 1].deg) && x2 <= degreesToCells(semitones[y2 - 1].deg) + offset) {
+      color = redMaterial;
+    } else if (x2 <= degreesToCells(semitones[y2 - 1].deg)) { // Внутри зеленой призмы
+      color = greenMaterial;
+    }
+  }
+  const material = new THREE.LineBasicMaterial({ color: color, opacity: opacity, transparent: true });
+  const points = [new THREE.Vector3(x1, y1, z1), new THREE.Vector3(x2, y2, z2)];
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const line = new THREE.Line(geometry, material);
+  return line;
+}
+
+// --- Функция для расчета яркости и прозрачности ---
+function calculateOpacityAndColor(dB) {
+  const minOpacity = 0.01;
+  const maxOpacity = 0.5;
+  const minColor = new THREE.Color(0xffffff);
+  const maxColor = new THREE.Color(0x00ff00);
+
+  const opacity = minOpacity + (maxOpacity - minOpacity) * (dB / 130);
+  const color = minColor.lerp(maxColor, dB / 130);
+
+  return { opacity, color };
+}
+
+// --- Функция для создания столбца ---
+function createColumn(x, y, z, color, isLeftGrid) {
+  const { opacity, color: lineColor } = calculateOpacityAndColor(z); // Используем z как dB
+
+  const width = degreesToCells(semitones[y - 1].deg); // y - 1, так как индексация полутонов начинается с 0
+  // Изменено: устанавливаем начальное положение столбца в зависимости от сетки
+  const startX = isLeftGrid ? leftAxis.children[2].position.x : 0; // Координата X белой оси
+  
+  // Создаем группу для линий столбца
+  const columnGroup = new THREE.Group();
+  columnGroup.position.x = startX; // Устанавливаем начальное положение столбца
+
+  // Создаем линии вокруг ячейки
+  const lines = [
+    createLine(0, y, 1, width, y, 1, lineColor, opacity, isLeftGrid, width, x),
+    createLine(0, y, z, width, y, z, lineColor, opacity, isLeftGrid, width, x),
+    createLine(0, y, 1, 0, y, z, lineColor, opacity, isLeftGrid, width, x),
+    createLine(width, y, 1, width, y, z, lineColor, opacity, isLeftGrid, width, x),
+    createLine(0, y + 1, 1, width, y + 1, 1, lineColor, opacity, isLeftGrid, width, x),
+    createLine(0, y + 1, z, width, y + 1, z, lineColor, opacity, isLeftGrid, width, x),
+    createLine(0, y + 1, 1, 0, y + 1, z, lineColor, opacity, isLeftGrid, width, x),
+    createLine(width, y + 1, 1, width, y + 1, z, lineColor, opacity, isLeftGrid, width, x),
+    createLine(0, y, 1, 0, y + 1, 1, lineColor, opacity, isLeftGrid, width, x),
+    createLine(width, y, 1, width, y + 1, 1, lineColor, opacity, isLeftGrid, width, x),
+    createLine(0, y, z, 0, y + 1, z, lineColor, opacity, isLeftGrid, width, x),
+    createLine(width, y, z, width, y + 1, z, lineColor, opacity, isLeftGrid, width, x),
+  ];
+
+  // Добавляем линии в группу
+  lines.forEach(line => columnGroup.add(line));
+
+  // Возвращаем группу линий (столбец)
+  return columnGroup;
+}
+
+// --- Преобразование градусов в количество ячеек ---
+function degreesToCells(degrees) {
+  return Math.round(degrees / 180 * 130);
+}
+
+const columns = []; // Массив для хранения столбцов
+
+// --- Отрисовка столбцов для каждого полутона ---
+for (let i = 1; i < semitones.length; i++) {
+  const randomDB = Math.round(Math.random() * 130);
+  // Вычисляем максимальное смещение для текущего столбца
+  let maxOffset = gridWidth - degreesToCells(semitones[i].deg);
+
+  let columnLeft = createColumn(0, i + 1, randomDB, greenMaterial, true); // Левая сетка
+  let columnRight = createColumn(0, i + 1, randomDB, greenMaterial, false); // Правая сетка
+  columns.push({
+    left: columnLeft,
+    right: columnRight,
+    direction: -1,                   // Начальное направление для левой сетки (-1 - влево)
+    maxOffset: maxOffset,
+    width: degreesToCells(semitones[i].deg),  // Добавлено: ширина столбца
+    speed: Math.random() * 0.2 + 0.1, // Скорость движения
+    dB: randomDB,                   // Текущий уровень громкости
+    dBDirection: 1                   // Направление изменения громкости (1 - вверх, -1 - вниз)
+  });
+  leftSequencerGroup.add(columnLeft);
+  rightSequencerGroup.add(columnRight);
+}
+
+// --- Функция для анимации столбцов и рендеринга ---
+function animate() {
+  requestAnimationFrame(animate);
+
+  // Анимация столбцов
+  columns.forEach(columnData => {
+    // Движение вдоль оси X
+    if (columnData.left.parent) {
+      columnData.left.position.x -= columnData.direction * columnData.speed;
+      columnData.left.scale.z = columnData.dB / 130;
+
+      // Изменение направления движения для левой сетки
+      if (columnData.left.position.x <= 0 || columnData.left.position.x >= columnData.maxOffset) { 
+        columnData.direction *= -1; 
+      }
+    }
+
+    if (columnData.right.parent) {
+      columnData.right.position.x += columnData.direction * columnData.speed;
+      columnData.right.scale.z = columnData.dB / 130;
+
+      // Изменение направления движения для правой сетки
+      if (columnData.right.position.x >= columnData.maxOffset || columnData.right.position.x <= 0) {
+        columnData.direction *= -1; 
+      }
+    }
+
+    // Изменение громкости (dB)
+    columnData.dB += columnData.dBDirection * (Math.random() * 0.5 + 0.1);
+    if (columnData.dB >= 130 || columnData.dB <= 0) {
+      columnData.dBDirection *= -1; 
+    }
+  });
+
+  // Рендеринг сцены
+  renderer.render(scene, camera);
+}
+animate();

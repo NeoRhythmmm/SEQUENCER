@@ -130,6 +130,3 @@ const semitones = [
   { n: "g#7/ab7", f: 26579.50, deg: 2.77, dBLeft: 0, dBRight: 0 },
   { n: "a7", f: 28160.00, deg: 1.38, dBLeft: 0, dBRight: 0 }
 ];
-
-// Присваиваем массив semitones глобальному объекту window
-window.semitones = semitones;
